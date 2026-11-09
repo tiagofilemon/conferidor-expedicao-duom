@@ -8,6 +8,8 @@
 
   <title>Conferidor de Expedição - Grupo Duom</title>
 
+  <script src="https://accounts.google.com/gsi/client"
+          async defer></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
@@ -21,24 +23,44 @@
       padding: 16px;
     }
 
-    h2 { text-align: center; margin-bottom: 5px; }
+    h2 {
+      text-align: center;
+      margin-bottom: 5px;
+    }
 
     .subtitulo {
       text-align: center;
       color: #666;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
+    }
+
+    .cartao {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .login {
+      text-align: center;
+    }
+
+    #googleButton {
+      display: flex;
+      justify-content: center;
+      margin: 14px 0;
     }
 
     .painel {
       display: flex;
       gap: 10px;
-      margin-bottom: 20px;
+      margin-bottom: 14px;
     }
 
     .contador {
       flex: 1;
       background: white;
-      padding: 18px 8px;
+      padding: 16px 8px;
       border-radius: 12px;
       text-align: center;
     }
@@ -52,11 +74,41 @@
     .verde { color: #16803c; }
     .vermelho { color: #c62828; }
 
+    #resultado {
+      display: none;
+      padding: 22px 12px;
+      border-radius: 12px;
+      text-align: center;
+      margin-bottom: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    #resultado strong {
+      display: block;
+      font-size: 29px;
+      margin-bottom: 8px;
+    }
+
+    .sucesso {
+      background: #d9f5e3;
+      color: #146c36;
+    }
+
+    .duplicado {
+      background: #ffe0e0;
+      color: #b71c1c;
+    }
+
+    .aviso {
+      background: #fff0ca;
+      color: #805500;
+    }
+
     #reader {
       background: white;
       border-radius: 12px;
       overflow: hidden;
-      margin-bottom: 15px;
+      margin-bottom: 14px;
     }
 
     button {
@@ -69,22 +121,16 @@
       font-size: 17px;
       font-weight: bold;
       margin-bottom: 10px;
+      cursor: pointer;
     }
 
-    button:disabled { opacity: 0.5; }
-
-    #resultado {
-      display: none;
-      padding: 20px;
-      border-radius: 12px;
-      text-align: center;
-      margin-top: 15px;
-      overflow-wrap: anywhere;
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
-    .sucesso {
-      background: #d9f5e3;
-      color: #146c36;
+    #btnProximo {
+      background: #16803c;
     }
 
     .info {
@@ -94,6 +140,8 @@
       margin-top: 12px;
       overflow-wrap: anywhere;
     }
+
+    .oculto { display: none; }
   </style>
 </head>
 
@@ -104,92 +152,279 @@
     Conferência de Expedição
   </div>
 
+  <div class="cartao login">
+    <strong>Acesso do operador</strong>
+    <div id="googleButton"></div>
+    <div id="usuario" class="info">
+      Faça login com a conta autorizada.
+    </div>
+    <button id="btnSair"
+            class="oculto"
+            onclick="sair()">
+      SAIR
+    </button>
+  </div>
+
   <div class="painel">
     <div class="contador">
       <div>Liberados hoje</div>
-      <div class="numero verde">0</div>
+      <div id="liberados" class="numero verde">0</div>
     </div>
 
     <div class="contador">
       <div>Duplicidades hoje</div>
-      <div class="numero vermelho">0</div>
+      <div id="duplicados" class="numero vermelho">0</div>
     </div>
   </div>
 
+  <div id="resultado" role="status"
+       aria-live="polite"></div>
+
   <div id="reader"></div>
 
-  <button id="btnIniciar" onclick="iniciarCamera()">
+  <button id="btnIniciar"
+          onclick="iniciarCamera()" disabled>
     INICIAR CÂMERA
   </button>
 
-  <button id="btnParar" onclick="pararCamera()" disabled>
+  <button id="btnProximo"
+          class="oculto"
+          onclick="proximaLeitura()">
+    CONFERIR PRÓXIMA ETIQUETA
+  </button>
+
+  <button id="btnParar"
+          onclick="pararCamera()" disabled>
     PARAR CÂMERA
   </button>
 
-  <div id="resultado"></div>
-
   <div id="status" class="info">
-    Aguardando início da câmera.
+    Aguardando login Google.
   </div>
 
   <script>
+    const CLIENT_ID =
+      "772405314986-gn3tjfsqs1a7e1ua5539nqnes2to5m0o.apps.googleusercontent.com";
+
+    const API_URL =
+      "https://qtheeurtuxtcliybatih.supabase.co/functions/v1/conferir-envio";
+
+    const EMAIL_AUTORIZADO =
+      "tiago.filemon@gmail.com";
+
+    let tokenGoogle = null;
     let leitor = null;
     let iniciando = false;
-    let ultimoCodigo = "";
-    let ultimoMomento = 0;
+    let processando = false;
+    let aguardandoProximo = false;
+
+    const el = id => document.getElementById(id);
 
     function mensagemErro(erro) {
-      if (erro && erro.message) return erro.message;
-      return String(erro);
+      return erro?.message || String(erro);
     }
 
-    function codigoLido(codigo) {
-      const agora = Date.now();
+    function mostrarResultado(tipo, titulo, detalhe) {
+      const caixa = el("resultado");
+      caixa.style.display = "block";
+      caixa.className = tipo;
 
+      caixa.replaceChildren();
+
+      const forte = document.createElement("strong");
+      forte.textContent = titulo;
+
+      const texto = document.createElement("div");
+      texto.textContent = detalhe;
+
+      caixa.append(forte, texto);
+    }
+
+    function atualizarTotais(totais) {
+      if (!totais) return;
+
+      el("liberados").textContent =
+        totais.liberadosHoje ?? 0;
+
+      el("duplicados").textContent =
+        totais.duplicadosHoje ?? 0;
+    }
+
+    function loginGoogle(resposta) {
+      if (!resposta?.credential) {
+        el("status").textContent =
+          "Não foi possível obter o login Google.";
+        return;
+      }
+
+      tokenGoogle = resposta.credential;
+
+      // O e-mail exibido aqui é apenas informativo.
+      // A autorização real ocorre na Edge Function.
+      el("usuario").textContent =
+        "Login Google recebido. Pronto para conferir.";
+
+      el("btnIniciar").disabled = false;
+      el("btnSair").classList.remove("oculto");
+
+      el("status").textContent =
+        "Login realizado. Inicie a câmera.";
+    }
+
+    function iniciarLogin() {
+      if (!window.google?.accounts?.id) {
+        el("status").textContent =
+          "Não foi possível carregar o login Google.";
+        return;
+      }
+
+      google.accounts.id.initialize({
+        client_id: CLIENT_ID,
+        callback: loginGoogle,
+        auto_select: false
+      });
+
+      google.accounts.id.renderButton(
+        el("googleButton"),
+        {
+          theme: "outline",
+          size: "large",
+          text: "signin_with",
+          width: 260
+        }
+      );
+    }
+
+    function sair() {
+      if (processando) return;
+
+      tokenGoogle = null;
+
+      google.accounts.id.disableAutoSelect();
+
+      pararCamera();
+
+      el("usuario").textContent =
+        "Faça login com a conta autorizada.";
+
+      el("btnIniciar").disabled = true;
+      el("btnSair").classList.add("oculto");
+
+      el("status").textContent =
+        "Sessão encerrada.";
+    }
+
+    async function codigoLido(codigo) {
       if (
-        codigo === ultimoCodigo &&
-        agora - ultimoMomento < 3000
+        !tokenGoogle ||
+        processando ||
+        aguardandoProximo
       ) return;
 
-      ultimoCodigo = codigo;
-      ultimoMomento = agora;
+      processando = true;
+      aguardandoProximo = true;
 
-      const resultado =
-        document.getElementById("resultado");
+      if (leitor) {
+        try { leitor.pause(true); } catch (e) {}
+      }
 
-      resultado.style.display = "block";
-      resultado.className = "sucesso";
+      el("btnProximo").classList.add("oculto");
 
-      resultado.textContent =
-        "QR CODE LIDO: " + codigo;
+      mostrarResultado(
+        "aviso",
+        "CONFERINDO...",
+        "Consultando o envio no Supabase."
+      );
 
-      document.getElementById("status").textContent =
-        "Leitura realizada. Teste a próxima etiqueta.";
+      el("status").textContent =
+        "Aguarde a resposta da conferência.";
+
+      try {
+        const resposta = await fetch(API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + tokenGoogle
+          },
+          body: JSON.stringify({
+            id: codigo
+          })
+        });
+
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+          throw new Error(
+            dados.erro || "Erro na conferência."
+          );
+        }
+
+        if (dados.status === "LIBERADO") {
+          mostrarResultado(
+            "sucesso",
+            "LIBERADO",
+            "Envio: " + dados.id
+          );
+        } else if (dados.status === "DUPLICADO") {
+          mostrarResultado(
+            "duplicado",
+            "DUPLICADO",
+            "ATENÇÃO! Envio já conferido: " + dados.id
+          );
+        } else {
+          throw new Error(
+            "Resposta inesperada do servidor."
+          );
+        }
+
+        atualizarTotais(dados.totais);
+
+        el("status").textContent =
+          "Retire a etiqueta da câmera e toque em CONFERIR PRÓXIMA ETIQUETA.";
+
+      } catch (erro) {
+        mostrarResultado(
+          "aviso",
+          "NÃO CONFERIDO",
+          mensagemErro(erro)
+        );
+
+        el("status").textContent =
+          "Falha de comunicação ou autenticação. Verifique antes de continuar.";
+      } finally {
+        processando = false;
+
+        if (leitor) {
+          el("btnProximo").classList.remove("oculto");
+        }
+      }
     }
 
     async function iniciarCamera() {
-      if (leitor || iniciando) return;
+      if (
+        leitor ||
+        iniciando ||
+        !tokenGoogle
+      ) return;
 
       iniciando = true;
-
-      const status = document.getElementById("status");
-      const iniciar = document.getElementById("btnIniciar");
-      const parar = document.getElementById("btnParar");
-
-      iniciar.disabled = true;
+      el("btnIniciar").disabled = true;
 
       try {
         if (typeof Html5Qrcode === "undefined") {
-          throw new Error("Biblioteca QR Code não carregada.");
+          throw new Error(
+            "Biblioteca QR Code não carregada."
+          );
         }
 
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error(
-            "Acesso à câmera indisponível neste navegador."
+            "Câmera indisponível neste navegador."
           );
         }
 
-        status.textContent = "Solicitando câmera...";
+        el("status").textContent =
+          "Solicitando acesso à câmera...";
 
         leitor = new Html5Qrcode("reader");
 
@@ -200,21 +435,30 @@
             qrbox: function(w, h) {
               const tamanho = Math.max(
                 100,
-                Math.min(240, Math.floor(Math.min(w, h) * 0.75))
+                Math.min(
+                  240,
+                  Math.floor(Math.min(w, h) * 0.75)
+                )
               );
-              return { width: tamanho, height: tamanho };
+
+              return {
+                width: tamanho,
+                height: tamanho
+              };
             }
           },
           codigoLido,
           function() {}
         );
 
-        parar.disabled = false;
-        status.textContent =
+        aguardandoProximo = false;
+        el("btnParar").disabled = false;
+
+        el("status").textContent =
           "Câmera ativa. Aponte para o QR Code.";
 
       } catch (erro) {
-        status.textContent =
+        el("status").textContent =
           "Erro da câmera: " + mensagemErro(erro);
 
         if (leitor) {
@@ -222,31 +466,58 @@
         }
 
         leitor = null;
-        iniciar.disabled = false;
+        el("btnIniciar").disabled = false;
 
       } finally {
         iniciando = false;
       }
     }
 
-    async function pararCamera() {
-      if (!leitor) return;
+    function proximaLeitura() {
+      if (!leitor || processando) return;
+
+      aguardandoProximo = false;
+
+      el("btnProximo").classList.add("oculto");
+
+      el("resultado").style.display = "none";
 
       try {
-        await leitor.stop();
-        leitor.clear();
-      } catch (e) {
-        console.error(e);
+        leitor.resume();
+      } catch (erro) {
+        el("status").textContent =
+          "Erro ao retomar câmera: " +
+          mensagemErro(erro);
+        return;
       }
 
+      el("status").textContent =
+        "Aponte para a próxima etiqueta.";
+    }
+
+    async function pararCamera() {
+      if (!leitor || processando) return;
+
+      const atual = leitor;
       leitor = null;
+      aguardandoProximo = true;
 
-      document.getElementById("btnIniciar").disabled = false;
-      document.getElementById("btnParar").disabled = true;
+      try {
+        await atual.stop();
+        await atual.clear();
+      } catch (erro) {
+        console.error(erro);
+      }
 
-      document.getElementById("status").textContent =
+      el("btnIniciar").disabled = !tokenGoogle;
+      el("btnParar").disabled = true;
+      el("btnProximo").classList.add("oculto");
+
+      el("status").textContent =
         "Câmera parada.";
     }
+
+    window.addEventListener("load", iniciarLogin);
   </script>
 
 </body>
