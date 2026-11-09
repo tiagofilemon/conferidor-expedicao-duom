@@ -1,0 +1,253 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <title>Conferidor de Expedição - Grupo Duom</title>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f5f9;
+      color: #263b69;
+      margin: 0;
+      padding: 16px;
+    }
+
+    h2 { text-align: center; margin-bottom: 5px; }
+
+    .subtitulo {
+      text-align: center;
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    .painel {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .contador {
+      flex: 1;
+      background: white;
+      padding: 18px 8px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .numero {
+      font-size: 38px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
+    .verde { color: #16803c; }
+    .vermelho { color: #c62828; }
+
+    #reader {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 15px;
+    }
+
+    button {
+      width: 100%;
+      padding: 16px;
+      border: 0;
+      border-radius: 10px;
+      background: #263b69;
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    button:disabled { opacity: 0.5; }
+
+    #resultado {
+      display: none;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      margin-top: 15px;
+      overflow-wrap: anywhere;
+    }
+
+    .sucesso {
+      background: #d9f5e3;
+      color: #146c36;
+    }
+
+    .info {
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+      margin-top: 12px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>GRUPO DUOM</h2>
+  <div class="subtitulo">
+    Conferência de Expedição
+  </div>
+
+  <div class="painel">
+    <div class="contador">
+      <div>Liberados hoje</div>
+      <div class="numero verde">0</div>
+    </div>
+
+    <div class="contador">
+      <div>Duplicidades hoje</div>
+      <div class="numero vermelho">0</div>
+    </div>
+  </div>
+
+  <div id="reader"></div>
+
+  <button id="btnIniciar" onclick="iniciarCamera()">
+    INICIAR CÂMERA
+  </button>
+
+  <button id="btnParar" onclick="pararCamera()" disabled>
+    PARAR CÂMERA
+  </button>
+
+  <div id="resultado"></div>
+
+  <div id="status" class="info">
+    Aguardando início da câmera.
+  </div>
+
+  <script>
+    let leitor = null;
+    let iniciando = false;
+    let ultimoCodigo = "";
+    let ultimoMomento = 0;
+
+    function mensagemErro(erro) {
+      if (erro && erro.message) return erro.message;
+      return String(erro);
+    }
+
+    function codigoLido(codigo) {
+      const agora = Date.now();
+
+      if (
+        codigo === ultimoCodigo &&
+        agora - ultimoMomento < 3000
+      ) return;
+
+      ultimoCodigo = codigo;
+      ultimoMomento = agora;
+
+      const resultado =
+        document.getElementById("resultado");
+
+      resultado.style.display = "block";
+      resultado.className = "sucesso";
+
+      resultado.textContent =
+        "QR CODE LIDO: " + codigo;
+
+      document.getElementById("status").textContent =
+        "Leitura realizada. Teste a próxima etiqueta.";
+    }
+
+    async function iniciarCamera() {
+      if (leitor || iniciando) return;
+
+      iniciando = true;
+
+      const status = document.getElementById("status");
+      const iniciar = document.getElementById("btnIniciar");
+      const parar = document.getElementById("btnParar");
+
+      iniciar.disabled = true;
+
+      try {
+        if (typeof Html5Qrcode === "undefined") {
+          throw new Error("Biblioteca QR Code não carregada.");
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error(
+            "Acesso à câmera indisponível neste navegador."
+          );
+        }
+
+        status.textContent = "Solicitando câmera...";
+
+        leitor = new Html5Qrcode("reader");
+
+        await leitor.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: function(w, h) {
+              const tamanho = Math.max(
+                100,
+                Math.min(240, Math.floor(Math.min(w, h) * 0.75))
+              );
+              return { width: tamanho, height: tamanho };
+            }
+          },
+          codigoLido,
+          function() {}
+        );
+
+        parar.disabled = false;
+        status.textContent =
+          "Câmera ativa. Aponte para o QR Code.";
+
+      } catch (erro) {
+        status.textContent =
+          "Erro da câmera: " + mensagemErro(erro);
+
+        if (leitor) {
+          try { await leitor.clear(); } catch (e) {}
+        }
+
+        leitor = null;
+        iniciar.disabled = false;
+
+      } finally {
+        iniciando = false;
+      }
+    }
+
+    async function pararCamera() {
+      if (!leitor) return;
+
+      try {
+        await leitor.stop();
+        leitor.clear();
+      } catch (e) {
+        console.error(e);
+      }
+
+      leitor = null;
+
+      document.getElementById("btnIniciar").disabled = false;
+      document.getElementById("btnParar").disabled = true;
+
+      document.getElementById("status").textContent =
+        "Câmera parada.";
+    }
+  </script>
+
+</body>
+</html>
