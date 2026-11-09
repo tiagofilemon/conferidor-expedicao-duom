@@ -1,193 +1,79 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1">
-
-  <title>Conferidor de Expedição - Grupo Duom</title>
-
-  <script src="https://accounts.google.com/gsi/client"
-          async defer></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
-  <style>
-    * { box-sizing: border-box; }
-
-    body {
-      font-family: Arial, sans-serif;
-      background: #f3f5f9;
-      color: #263b69;
-      margin: 0;
-      padding: 16px;
-    }
-
-    h2 {
-      text-align: center;
-      margin-bottom: 5px;
-    }
-
-    .subtitulo {
-      text-align: center;
-      color: #666;
-      margin-bottom: 18px;
-    }
-
-    .cartao {
-      background: white;
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 14px;
-    }
-
-    .login { text-align: center; }
-
-    #googleButton {
-      display: flex;
-      justify-content: center;
-      margin: 14px 0;
-    }
-
-    .painel {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-
-    .contador {
-      flex: 1;
-      background: white;
-      padding: 16px 8px;
-      border-radius: 12px;
-      text-align: center;
-    }
-
-    .numero {
-      font-size: 38px;
-      font-weight: bold;
-      margin-top: 8px;
-    }
-
-    .verde { color: #16803c; }
-    .vermelho { color: #c62828; }
-
-    #resultado {
-      display: none;
-      padding: 20px 12px;
-      border-radius: 12px;
-      text-align: center;
-      margin-bottom: 14px;
-      overflow-wrap: anywhere;
-    }
-
-    #resultado strong {
-      display: block;
-      font-size: 30px;
-      margin-bottom: 8px;
-    }
-
-    .sucesso {
-      background: #d9f5e3;
-      color: #146c36;
-    }
-
-    .duplicado {
-      background: #ffe0e0;
-      color: #b71c1c;
-    }
-
-    .aviso {
-      background: #fff0ca;
-      color: #805500;
-    }
-
-    #reader {
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      margin-bottom: 14px;
-    }
-
-    button {
-      width: 100%;
-      padding: 16px;
-      border: 0;
-      border-radius: 10px;
-      background: #263b69;
-      color: white;
-      font-size: 17px;
-      font-weight: bold;
-      margin-bottom: 10px;
-      cursor: pointer;
-    }
-
-    button:disabled { opacity: 0.5; }
-
-    .info {
-      text-align: center;
-      color: #666;
-      font-size: 14px;
-      margin-top: 12px;
-      overflow-wrap: anywhere;
-    }
-
-    .oculto { display: none; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3f5f9">
+<title>Conferidor de Expedição - Grupo Duom</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  :root { color-scheme: light; }
+  body { margin:0; padding:8px 10px max(10px,env(safe-area-inset-bottom)); background:#f3f5f9; color:#263b69; font-family:Arial,Helvetica,sans-serif; }
+  .app { width:100%; max-width:520px; margin:0 auto; }
+  .oculto { display:none !important; }
+  .acesso { display:flex; align-items:center; gap:10px; background:white; padding:9px 11px; border-radius:11px; margin-bottom:8px; min-height:52px; }
+  .acesso-conteudo { flex:1; min-width:0; }
+  .acesso-titulo { font-size:12px; font-weight:700; margin-bottom:2px; }
+  #usuario { font-size:11px; color:#667085; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #googleButton { margin-top:7px; }
+  .acesso.conectado { min-height:42px; padding:6px 10px; }
+  .btn-sair { width:auto; flex:none; border:0; padding:8px 12px; margin:0; font-size:12px; border-radius:8px; color:#344054; background:#e9edf3; font-weight:700; cursor:pointer; }
+  .painel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; }
+  .contador { background:white; border-radius:10px; text-align:center; padding:7px 5px 6px; min-width:0; }
+  .contador .rotulo { font-size:11px; color:#667085; font-weight:700; }
+  .numero { font-size:27px; line-height:1.1; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .verde { color:#16803c; } .vermelho { color:#c62828; } .azul { color:#27528b; } .roxo { color:#7546a2; }
+  .camera-cartao { background:white; border-radius:11px; padding:8px; }
+  .camera-titulo { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 6px; font-size:12px; font-weight:700; }
+  .camera-titulo span:last-child { font-size:11px; font-weight:400; color:#667085; }
+  #reader { width:100%; background:#17212f; border-radius:9px; overflow:hidden; min-height:180px; max-height: min(37dvh, 310px); }
+  #reader video { display:block !important; max-height:min(37dvh,310px) !important; width:100% !important; object-fit:contain !important; }
+  #reader img { max-height: min(37dvh,310px); object-fit:contain; }
+  #resultado { display:none; padding:9px 10px; border-radius:9px; text-align:center; margin-top:7px; overflow-wrap:anywhere; font-size:12px; }
+  #resultado strong { display:block; font-size:21px; margin-bottom:2px; }
+  .sucesso { background:#d9f5e3; color:#146c36; }
+  .duplicado { background:#ffe0e0; color:#b71c1c; }
+  .aviso { background:#fff0ca; color:#805500; }
+  .acoes { display:flex; gap:8px; margin-top:8px; }
+  .acoes button { flex:1; min-width:0; border:0; border-radius:9px; padding:11px 7px; background:#263b69; color:white; font-size:13px; font-weight:700; cursor:pointer; }
+  .acoes button:last-child { background:#52627c; }
+  button:disabled { opacity:.45; cursor:default; }
+  #status { color:#667085; text-align:center; font-size:11px; margin:7px 0 0; overflow-wrap:anywhere; }
+  @media (max-height:760px) { #reader, #reader video, #reader img { max-height:min(32dvh,250px) !important; } .numero { font-size:24px; } .contador { padding:5px; } }
+  @media (min-width:700px) { body { padding:16px; } #reader, #reader video, #reader img { max-height:350px !important; } }
+</style>
 </head>
-
 <body>
-
-  <h2>GRUPO DUOM</h2>
-  <div class="subtitulo">
-    Conferência de Expedição
-  </div>
-
-  <div class="cartao login">
-    <strong>Acesso do operador</strong>
-    <div id="googleButton"></div>
-    <div id="usuario" class="info">
-      Faça login com a conta autorizada.
+<main class="app">
+  <section id="acesso" class="acesso" aria-label="Acesso do operador">
+    <div class="acesso-conteudo">
+      <div class="acesso-titulo">Operador</div>
+      <div id="usuario">Faça login com a conta autorizada.</div>
+      <div id="googleButton"></div>
     </div>
-    <button id="btnSair"
-            class="oculto"
-            onclick="sair()">
-      SAIR
-    </button>
+    <button id="btnSair" class="btn-sair oculto" onclick="sair()">Sair</button>
+  </section>
+  <section class="painel" aria-label="Indicadores de hoje">
+    <div class="contador"><div class="rotulo">Liberados hoje</div><div id="liberados" class="numero verde">0</div></div>
+    <div class="contador"><div class="rotulo">Duplicidades hoje</div><div id="duplicados" class="numero vermelho">0</div></div>
+    <div class="contador"><div class="rotulo">Agência</div><div id="agencia" class="numero azul">0</div></div>
+    <div class="contador"><div class="rotulo">Flex</div><div id="flex" class="numero roxo">0</div></div>
+  </section>
+  <section class="camera-cartao" aria-label="Leitor de etiquetas">
+    <div class="camera-titulo"><span>Leitor de etiquetas</span><span>QR Code</span></div>
+    <div id="reader"></div>
+    <div id="resultado" role="status" aria-live="polite"></div>
+  </section>
+  <div class="acoes">
+    <button id="btnIniciar" onclick="iniciarCamera()" disabled>INICIAR CÂMERA</button>
+    <button id="btnParar" onclick="pararCamera()" disabled>PARAR CÂMERA</button>
   </div>
-
-  <div class="painel">
-    <div class="contador">
-      <div>Liberados hoje</div>
-      <div id="liberados" class="numero verde">0</div>
-    </div>
-    <div class="contador">
-      <div>Duplicidades hoje</div>
-      <div id="duplicados" class="numero vermelho">0</div>
-    </div>
-  </div>
-
-  <div id="resultado" role="status"
-       aria-live="polite"></div>
-
-  <div id="reader"></div>
-
-  <button id="btnIniciar"
-          onclick="iniciarCamera()" disabled>
-    INICIAR CÂMERA
-  </button>
-
-  <button id="btnParar"
-          onclick="pararCamera()" disabled>
-    PARAR CÂMERA
-  </button>
-
-  <div id="status" class="info">
-    Aguardando login Google.
-  </div>
-
-  <script>
-    const CLIENT_ID =
+  <div id="status">Aguardando login Google.</div>
+</main>
+<script>
+const CLIENT_ID =
       "772405314986-gn3tjfsqs1a7e1ua5539nqnes2to5m0o.apps.googleusercontent.com";
 
     const API_URL =
@@ -235,6 +121,8 @@
 
       el("duplicados").textContent =
         totais.duplicadosHoje ?? 0;
+      el("agencia").textContent = totais.agenciaHoje ?? 0;
+      el("flex").textContent = totais.flexHoje ?? 0;
     }
 
     function loginGoogle(resposta) {
@@ -242,8 +130,9 @@
 
       tokenGoogle = resposta.credential;
 
-      el("usuario").textContent =
-        "Login Google recebido. Pronto para conferir.";
+      el("usuario").textContent = "Operador conectado";
+      el("googleButton").classList.add("oculto");
+      el("acesso").classList.add("conectado");
 
       el("btnIniciar").disabled = false;
       el("btnSair").classList.remove("oculto");
@@ -328,17 +217,21 @@
           );
         }
 
+        const tipoLegivel = dados.tipoEnvio === "FLEX"
+          ? "Flex" : dados.tipoEnvio === "AGENCIA" ? "Agência" : "";
+        const sufixoTipo = tipoLegivel ? " · " + tipoLegivel : "";
+
         if (dados.status === "LIBERADO") {
           mostrarResultado(
             "sucesso",
             "LIBERADO",
-            "Envio: " + dados.id
+            "Envio: " + dados.id + sufixoTipo
           );
         } else if (dados.status === "DUPLICADO") {
           mostrarResultado(
             "duplicado",
             "DUPLICADO",
-            "Envio já conferido: " + dados.id
+            "Envio já conferido: " + dados.id + sufixoTipo
           );
         } else {
           throw new Error(
@@ -498,8 +391,9 @@
       tokenGoogle = null;
       google.accounts.id.disableAutoSelect();
 
-      el("usuario").textContent =
-        "Faça login com a conta autorizada.";
+      el("usuario").textContent = "Faça login com a conta autorizada.";
+      el("googleButton").classList.remove("oculto");
+      el("acesso").classList.remove("conectado");
 
       el("btnIniciar").disabled = true;
       el("btnSair").classList.add("oculto");
@@ -508,6 +402,5 @@
 
     window.addEventListener("load", iniciarLogin);
   </script>
-
 </body>
 </html>
