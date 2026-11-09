@@ -41,9 +41,7 @@
       margin-bottom: 14px;
     }
 
-    .login {
-      text-align: center;
-    }
+    .login { text-align: center; }
 
     #googleButton {
       display: flex;
@@ -76,7 +74,7 @@
 
     #resultado {
       display: none;
-      padding: 22px 12px;
+      padding: 20px 12px;
       border-radius: 12px;
       text-align: center;
       margin-bottom: 14px;
@@ -85,7 +83,7 @@
 
     #resultado strong {
       display: block;
-      font-size: 29px;
+      font-size: 30px;
       margin-bottom: 8px;
     }
 
@@ -124,14 +122,7 @@
       cursor: pointer;
     }
 
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    #btnProximo {
-      background: #16803c;
-    }
+    button:disabled { opacity: 0.5; }
 
     .info {
       text-align: center;
@@ -170,7 +161,6 @@
       <div>Liberados hoje</div>
       <div id="liberados" class="numero verde">0</div>
     </div>
-
     <div class="contador">
       <div>Duplicidades hoje</div>
       <div id="duplicados" class="numero vermelho">0</div>
@@ -185,12 +175,6 @@
   <button id="btnIniciar"
           onclick="iniciarCamera()" disabled>
     INICIAR CÂMERA
-  </button>
-
-  <button id="btnProximo"
-          class="oculto"
-          onclick="proximaLeitura()">
-    CONFERIR PRÓXIMA ETIQUETA
   </button>
 
   <button id="btnParar"
@@ -209,14 +193,18 @@
     const API_URL =
       "https://qtheeurtuxtcliybatih.supabase.co/functions/v1/conferir-envio";
 
-    const EMAIL_AUTORIZADO =
-      "tiago.filemon@gmail.com";
+    const PAUSA_APOS_LEITURA = 800;
+    const INTERVALO_MESMO_CODIGO = 4000;
 
     let tokenGoogle = null;
     let leitor = null;
     let iniciando = false;
     let processando = false;
-    let aguardandoProximo = false;
+    let cameraAtiva = false;
+    let ultimoCodigo = "";
+    let ultimoMomento = 0;
+    let temporizador = null;
+    let geracaoCamera = 0;
 
     const el = id => document.getElementById(id);
 
@@ -228,7 +216,6 @@
       const caixa = el("resultado");
       caixa.style.display = "block";
       caixa.className = tipo;
-
       caixa.replaceChildren();
 
       const forte = document.createElement("strong");
@@ -251,16 +238,10 @@
     }
 
     function loginGoogle(resposta) {
-      if (!resposta?.credential) {
-        el("status").textContent =
-          "Não foi possível obter o login Google.";
-        return;
-      }
+      if (!resposta?.credential) return;
 
       tokenGoogle = resposta.credential;
 
-      // O e-mail exibido aqui é apenas informativo.
-      // A autorização real ocorre na Edge Function.
       el("usuario").textContent =
         "Login Google recebido. Pronto para conferir.";
 
@@ -295,49 +276,39 @@
       );
     }
 
-    function sair() {
-      if (processando) return;
-
-      tokenGoogle = null;
-
-      google.accounts.id.disableAutoSelect();
-
-      pararCamera();
-
-      el("usuario").textContent =
-        "Faça login com a conta autorizada.";
-
-      el("btnIniciar").disabled = true;
-      el("btnSair").classList.add("oculto");
-
-      el("status").textContent =
-        "Sessão encerrada.";
-    }
-
     async function codigoLido(codigo) {
       if (
         !tokenGoogle ||
-        processando ||
-        aguardandoProximo
+        !cameraAtiva ||
+        processando
+      ) return;
+
+      const agora = Date.now();
+
+      if (
+        codigo === ultimoCodigo &&
+        agora - ultimoMomento < INTERVALO_MESMO_CODIGO
       ) return;
 
       processando = true;
-      aguardandoProximo = true;
+      ultimoCodigo = codigo;
+      ultimoMomento = agora;
 
-      if (leitor) {
-        try { leitor.pause(true); } catch (e) {}
-      }
+      const geracaoAtual = geracaoCamera;
 
-      el("btnProximo").classList.add("oculto");
+      // Pausa o processamento, mantendo a câmera aberta.
+      try {
+        leitor.pause(true);
+      } catch (e) {}
 
       mostrarResultado(
         "aviso",
         "CONFERINDO...",
-        "Consultando o envio no Supabase."
+        "Consultando o Supabase."
       );
 
       el("status").textContent =
-        "Aguarde a resposta da conferência.";
+        "Processando etiqueta...";
 
       try {
         const resposta = await fetch(API_URL, {
@@ -346,9 +317,7 @@
             "Content-Type": "application/json",
             "Authorization": "Bearer " + tokenGoogle
           },
-          body: JSON.stringify({
-            id: codigo
-          })
+          body: JSON.stringify({ id: codigo })
         });
 
         const dados = await resposta.json();
@@ -369,7 +338,7 @@
           mostrarResultado(
             "duplicado",
             "DUPLICADO",
-            "ATENÇÃO! Envio já conferido: " + dados.id
+            "Envio já conferido: " + dados.id
           );
         } else {
           throw new Error(
@@ -380,7 +349,7 @@
         atualizarTotais(dados.totais);
 
         el("status").textContent =
-          "Retire a etiqueta da câmera e toque em CONFERIR PRÓXIMA ETIQUETA.";
+          "Conferência concluída. Próxima etiqueta automaticamente.";
 
       } catch (erro) {
         mostrarResultado(
@@ -390,12 +359,31 @@
         );
 
         el("status").textContent =
-          "Falha de comunicação ou autenticação. Verifique antes de continuar.";
+          "Falha na conferência. Verifique o envio antes de continuar.";
+
       } finally {
         processando = false;
 
-        if (leitor) {
-          el("btnProximo").classList.remove("oculto");
+        // Retoma automaticamente apenas se a
+        // mesma câmera continuar ativa.
+        if (
+          cameraAtiva &&
+          leitor &&
+          geracaoAtual === geracaoCamera
+        ) {
+          temporizador = setTimeout(() => {
+            temporizador = null;
+
+            if (!cameraAtiva || !leitor) return;
+
+            try {
+              leitor.resume();
+              el("status").textContent =
+                "Câmera ativa. Aponte para a próxima etiqueta.";
+            } catch (e) {
+              console.error(e);
+            }
+          }, PAUSA_APOS_LEITURA);
         }
       }
     }
@@ -451,9 +439,12 @@
           function() {}
         );
 
-        aguardandoProximo = false;
-        el("btnParar").disabled = false;
+        geracaoCamera++;
+        cameraAtiva = true;
+        ultimoCodigo = "";
+        ultimoMomento = 0;
 
+        el("btnParar").disabled = false;
         el("status").textContent =
           "Câmera ativa. Aponte para o QR Code.";
 
@@ -473,48 +464,46 @@
       }
     }
 
-    function proximaLeitura() {
-      if (!leitor || processando) return;
-
-      aguardandoProximo = false;
-
-      el("btnProximo").classList.add("oculto");
-
-      el("resultado").style.display = "none";
-
-      try {
-        leitor.resume();
-      } catch (erro) {
-        el("status").textContent =
-          "Erro ao retomar câmera: " +
-          mensagemErro(erro);
-        return;
-      }
-
-      el("status").textContent =
-        "Aponte para a próxima etiqueta.";
-    }
-
     async function pararCamera() {
-      if (!leitor || processando) return;
+      cameraAtiva = false;
+      geracaoCamera++;
+
+      if (temporizador) {
+        clearTimeout(temporizador);
+        temporizador = null;
+      }
 
       const atual = leitor;
       leitor = null;
-      aguardandoProximo = true;
 
-      try {
-        await atual.stop();
-        await atual.clear();
-      } catch (erro) {
-        console.error(erro);
+      if (atual) {
+        try {
+          await atual.stop();
+          await atual.clear();
+        } catch (erro) {
+          console.error(erro);
+        }
       }
 
       el("btnIniciar").disabled = !tokenGoogle;
       el("btnParar").disabled = true;
-      el("btnProximo").classList.add("oculto");
+      el("status").textContent = "Câmera parada.";
+    }
 
-      el("status").textContent =
-        "Câmera parada.";
+    async function sair() {
+      if (processando) return;
+
+      await pararCamera();
+
+      tokenGoogle = null;
+      google.accounts.id.disableAutoSelect();
+
+      el("usuario").textContent =
+        "Faça login com a conta autorizada.";
+
+      el("btnIniciar").disabled = true;
+      el("btnSair").classList.add("oculto");
+      el("status").textContent = "Sessão encerrada.";
     }
 
     window.addEventListener("load", iniciarLogin);
