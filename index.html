@@ -25,6 +25,17 @@
   .contador .rotulo { font-size:11px; color:#667085; font-weight:700; }
   .numero { font-size:27px; line-height:1.1; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; }
   .verde { color:#16803c; } .vermelho { color:#c62828; } .azul { color:#27528b; } .roxo { color:#7546a2; }
+  .caixas { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; }
+  .caixa-card { background:white; border-radius:10px; padding:9px; min-width:0; }
+  .caixa-topo { display:flex; justify-content:space-between; gap:5px; font-size:12px; font-weight:700; }
+  .caixa-contagem { font-size:13px; font-weight:800; margin-top:5px; }
+  .caixa-trilho { height:7px; background:#e9edf3; border-radius:9px; overflow:hidden; margin-top:6px; }
+  .caixa-progresso { height:100%; width:0; background:#27528b; transition:width .2s; }
+  #barraFlex { background:#7546a2; }
+  .caixa-situacao { font-size:10px; color:#667085; margin-top:5px; }
+  .caixa-card.pendente { outline:2px solid #e5a32a; background:#fff6dc; }
+  .btn-troca { display:none; width:100%; border:0; background:#a55b00; color:white; padding:9px 5px; border-radius:8px; margin-top:7px; font-weight:800; font-size:11px; cursor:pointer; }
+  .caixa-card.pendente .btn-troca { display:block; }
   .camera-cartao { background:white; border-radius:11px; padding:8px; }
   .camera-titulo { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 6px; font-size:12px; font-weight:700; }
   .camera-titulo span:last-child { font-size:11px; font-weight:400; color:#667085; }
@@ -64,6 +75,22 @@
     <div class="contador"><div class="rotulo">Agência</div><div id="agencia" class="numero azul">0</div></div>
     <div class="contador"><div class="rotulo">Flex</div><div id="flex" class="numero roxo">0</div></div>
   </section>
+  <section class="caixas" aria-label="Caixas de expedição">
+    <div id="cardAgencia" class="caixa-card">
+      <div class="caixa-topo"><span>📦 Agência</span><span id="caixaAgencia">Caixa 01</span></div>
+      <div id="qtdAgencia" class="caixa-contagem">— / 50</div>
+      <div class="caixa-trilho"><div id="barraAgencia" class="caixa-progresso"></div></div>
+      <div id="situacaoAgencia" class="caixa-situacao">Aguardando consulta</div>
+      <button id="trocarAgencia" class="btn-troca" onclick="confirmarTroca('AGENCIA')">CONFIRMAR TROCA DE CAIXA</button>
+    </div>
+    <div id="cardFlex" class="caixa-card">
+      <div class="caixa-topo"><span>📦 Flex</span><span id="caixaFlex">Caixa 01</span></div>
+      <div id="qtdFlex" class="caixa-contagem">— / 50</div>
+      <div class="caixa-trilho"><div id="barraFlex" class="caixa-progresso"></div></div>
+      <div id="situacaoFlex" class="caixa-situacao">Aguardando consulta</div>
+      <button id="trocarFlex" class="btn-troca" onclick="confirmarTroca('FLEX')">CONFIRMAR TROCA DE CAIXA</button>
+    </div>
+  </section>
   <section class="camera-cartao" aria-label="Leitor de etiquetas">
     <div class="camera-titulo"><span>Leitor de etiquetas</span><span>QR Code</span></div>
     <div id="reader"></div>
@@ -102,6 +129,10 @@ const CLIENT_ID =
     let somAtivo = true;
     let lanternaAtiva = false;
     let trilhaCamera = null;
+    let caixasAtuais = { AGENCIA: null, FLEX: null };
+    let atualizandoCaixas = false;
+    let confirmandoTroca = false;
+    let ultimoAvisoCaixa = "";
 
     function prepararAudio() {
       try {
@@ -218,6 +249,102 @@ const CLIENT_ID =
       el("flex").textContent = totais.flexHoje ?? 0;
     }
 
+    async function chamarAPI(corpo) {
+      const resposta = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + tokenGoogle
+        },
+        body: JSON.stringify(corpo)
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) throw new Error(dados.erro || "Falha na comunicação com o servidor.");
+      return dados;
+    }
+
+    function nomeCaixa(numero) {
+      return String(numero || 1).padStart(2, "0");
+    }
+
+    function renderizarCaixas() {
+      for (const [tipo, sufixo] of [["AGENCIA", "Agencia"], ["FLEX", "Flex"]]) {
+        const caixa = caixasAtuais[tipo];
+        const qtd = Number(caixa?.quantidade || 0);
+        const pendente = caixa?.status === "AGUARDANDO_TROCA";
+        el("card" + sufixo).classList.toggle("pendente", pendente);
+        el("caixa" + sufixo).textContent = "Caixa " + nomeCaixa(caixa?.numero_caixa);
+        el("qtd" + sufixo).textContent = (caixa ? qtd : 0) + " / 50";
+        el("barra" + sufixo).style.width = Math.min(100, Math.max(0, qtd * 2)) + "%";
+        el("situacao" + sufixo).textContent = pendente
+          ? "⚠️ CAIXA CHEIA — TROCA OBRIGATÓRIA"
+          : (caixa ? "Caixa aberta" : "Pronta para primeira etiqueta");
+        el("trocar" + sufixo).disabled = confirmandoTroca || processando;
+      }
+    }
+
+    async function consultarCaixas() {
+      if (!tokenGoogle || atualizandoCaixas || confirmandoTroca) return;
+      atualizandoCaixas = true;
+      try {
+        const dados = await chamarAPI({ acao: "consultar_caixas" });
+        if (!Array.isArray(dados.caixas)) throw new Error("Consulta de caixas inválida.");
+        caixasAtuais = { AGENCIA: null, FLEX: null };
+        for (const caixa of dados.caixas) {
+          if (caixa.tipo_envio === "AGENCIA" || caixa.tipo_envio === "FLEX") {
+            caixasAtuais[caixa.tipo_envio] = caixa;
+          }
+        }
+        renderizarCaixas();
+      } catch (erro) {
+        el("status").textContent = "Não foi possível atualizar as caixas: " + mensagemErro(erro);
+      } finally {
+        atualizandoCaixas = false;
+      }
+    }
+
+    async function confirmarTroca(tipo) {
+      if (!tokenGoogle || confirmandoTroca || processando) return;
+      const caixa = caixasAtuais[tipo];
+      if (!caixa || caixa.status !== "AGUARDANDO_TROCA") return;
+      const nome = tipo === "AGENCIA" ? "Agência" : "Flex";
+      if (!window.confirm("Você já trocou fisicamente a caixa " + nome + " " + nomeCaixa(caixa.numero_caixa) + "?\n\nConfirme somente depois de separar a próxima caixa.")) return;
+      confirmandoTroca = true;
+      renderizarCaixas();
+      try {
+        const dados = await chamarAPI({ acao: "confirmar_troca", tipoEnvio: tipo });
+        if (!dados.sucesso) throw new Error(dados.erro || "Troca não confirmada.");
+        mostrarResultado("sucesso", "TROCA CONFIRMADA", nome + " — Caixa " + nomeCaixa(dados.novaCaixa) + " aberta.");
+        el("status").textContent = "Troca registrada. Continue a conferência.";
+      } catch (erro) {
+        mostrarResultado("aviso", "TROCA NÃO CONFIRMADA", mensagemErro(erro));
+      } finally {
+        confirmandoTroca = false;
+        await consultarCaixas();
+        renderizarCaixas();
+      }
+    }
+
+    function detalheLocalizacao(dados) {
+      if (dados.caixa == null || dados.posicao == null || !dados.dataCaixa) {
+        return "Localização não registrada (conferência anterior ao controle de caixas).";
+      }
+      const partes = String(dados.dataCaixa).split("-");
+      const data = partes.length === 3 ? partes.reverse().join("/") : dados.dataCaixa;
+      return "Caixa " + nomeCaixa(dados.caixa) + " · Posição " + dados.posicao + "/50 · " + data;
+    }
+
+    function avisarCaixaCheia(tipo, numero) {
+      const chave = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) + ":" + tipo + ":" + numero;
+      if (ultimoAvisoCaixa === chave) return;
+      ultimoAvisoCaixa = chave;
+      prepararAudio();
+      emitirTom(720, .22, 0, .19, "square");
+      emitirTom(720, .22, .3, .19, "square");
+      emitirTom(920, .35, .6, .19, "square");
+      try { navigator.vibrate?.([300, 150, 300]); } catch (e) {}
+    }
+
     function loginGoogle(resposta) {
       if (!resposta?.credential) return;
 
@@ -231,7 +358,8 @@ const CLIENT_ID =
       el("btnSair").classList.remove("oculto");
 
       el("status").textContent =
-        "Login realizado. Inicie a câmera.";
+        "Login realizado. Consultando caixas...";
+      consultarCaixas();
     }
 
     function iniciarLogin() {
@@ -293,46 +421,32 @@ const CLIENT_ID =
         "Processando etiqueta...";
 
       try {
-        const resposta = await fetch(API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + tokenGoogle
-          },
-          body: JSON.stringify({ id: codigo })
-        });
+                 const dados = await chamarAPI({ id: codigo });
 
-        const dados = await resposta.json();
-
-        if (!resposta.ok) {
-          throw new Error(
-            dados.erro || "Erro na conferência."
-          );
-        }
-
-        const tipoLegivel = dados.tipoEnvio === "FLEX"
+const tipoLegivel = dados.tipoEnvio === "FLEX"
           ? "Flex" : dados.tipoEnvio === "AGENCIA" ? "Agência" : "";
         const sufixoTipo = tipoLegivel ? " · " + tipoLegivel : "";
 
-        if (dados.status === "LIBERADO") {
-          mostrarResultado(
-            "sucesso",
-            "LIBERADO",
-            "Envio: " + dados.id + sufixoTipo
-          );
-        } else if (dados.status === "DUPLICADO") {
-          mostrarResultado(
-            "duplicado",
-            "DUPLICADO",
-            "Envio já conferido: " + dados.id + sufixoTipo
-          );
-        } else {
-          throw new Error(
-            "Resposta inesperada do servidor."
-          );
-        }
+                 if (dados.status === "LIBERADO") {
+           mostrarResultado(
+             "sucesso", "LIBERADO",
+             "Envio: " + dados.id + sufixoTipo + " · Caixa " + nomeCaixa(dados.caixa) + " · " + dados.posicao + "/50"
+           );
+         } else if (dados.status === "DUPLICADO") {
+           mostrarResultado(
+             "duplicado", "DUPLICADO",
+             "Envio já conferido: " + dados.id + sufixoTipo + " · " + detalheLocalizacao(dados)
+           );
+         } else if (dados.status === "TROCA_PENDENTE") {
+           mostrarResultado(
+             "aviso", "TROCA OBRIGATÓRIA",
+             tipoLegivel + " — Caixa " + nomeCaixa(dados.caixa) + " cheia. Este pedido NÃO foi liberado. Confirme a troca e bipe novamente."
+           );
+         } else {
+           throw new Error("Resposta inesperada do servidor.");
+         }
 
-        atualizarTotais(dados.totais);
+atualizarTotais(dados.totais);
         tocarResultado(dados.status);
         if (dados.status === "DUPLICADO") {
           // Vibra apenas quando o servidor confirma a duplicidade.
@@ -499,6 +613,8 @@ const CLIENT_ID =
       await pararCamera();
 
       tokenGoogle = null;
+      caixasAtuais = { AGENCIA: null, FLEX: null };
+      renderizarCaixas();
       google.accounts.id.disableAutoSelect();
 
       el("usuario").textContent = "Faça login com a conta autorizada.";
@@ -511,6 +627,10 @@ const CLIENT_ID =
     }
 
     window.addEventListener("load", iniciarLogin);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && tokenGoogle) consultarCaixas();
+    });
+    setInterval(() => { if (tokenGoogle && !processando) consultarCaixas(); }, 60000);
   </script>
 </body>
 </html>
