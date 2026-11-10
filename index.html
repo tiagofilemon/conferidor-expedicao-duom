@@ -489,6 +489,10 @@ const tipoLegivel = dados.tipoEnvio === "FLEX"
          }
 
 atualizarTotais(dados.totais);
+        // Atualiza imediatamente a caixa com a posicao confirmada pelo servidor.
+        if (dados.status === "LIBERADO" || dados.status === "TROCA_PENDENTE") {
+          atualizarCaixaDaBipagem(dados);
+        }
         tocarResultado(dados.status);
         if (dados.status === "DUPLICADO") {
           // Vibra apenas quando o servidor confirma a duplicidade.
