@@ -112,12 +112,12 @@ const CLIENT_ID =
       } catch (e) { console.warn("Áudio indisponível", e); }
     }
 
-    function emitirTom(frequencia, duracao, atraso = 0, volume = 0.12) {
+    function emitirTom(frequencia, duracao, atraso = 0, volume = 0.12, forma = "sine") {
       if (!somAtivo || !audioContexto || audioContexto.state !== "running") return;
       const inicio = audioContexto.currentTime + atraso;
       const oscilador = audioContexto.createOscillator();
       const ganho = audioContexto.createGain();
-      oscilador.type = "sine";
+      oscilador.type = forma;
       oscilador.frequency.value = frequencia;
       ganho.gain.setValueAtTime(0.0001, inicio);
       ganho.gain.exponentialRampToValueAtTime(volume, inicio + 0.015);
@@ -132,8 +132,10 @@ const CLIENT_ID =
       try {
         if (status === "LIBERADO") emitirTom(880, 0.13);
         if (status === "DUPLICADO") {
-          emitirTom(390, 0.16);
-          emitirTom(330, 0.20, 0.22);
+          // Alarme destacado: tres pulsos com timbre mais incisivo.
+          emitirTom(620, 0.23, 0.00, 0.22, "square");
+          emitirTom(480, 0.23, 0.30, 0.22, "square");
+          emitirTom(620, 0.34, 0.60, 0.22, "square");
         }
       } catch (e) { console.warn("Não foi possível tocar o aviso", e); }
     }
@@ -332,6 +334,17 @@ const CLIENT_ID =
 
         atualizarTotais(dados.totais);
         tocarResultado(dados.status);
+        if (dados.status === "DUPLICADO") {
+          // Vibra apenas quando o servidor confirma a duplicidade.
+          // O recurso depende do suporte e das configuracoes do Android.
+          try {
+            if (typeof navigator.vibrate === "function") {
+              navigator.vibrate([200, 100, 200, 100, 250]);
+            }
+          } catch (e) {
+            console.warn("Vibracao indisponivel", e);
+          }
+        }
 
         el("status").textContent =
           "Conferência concluída. Próxima etiqueta automaticamente.";
