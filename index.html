@@ -36,6 +36,9 @@
   .sucesso { background:#d9f5e3; color:#146c36; }
   .duplicado { background:#ffe0e0; color:#b71c1c; }
   .aviso { background:#fff0ca; color:#805500; }
+  .extras { display:flex; gap:8px; margin-top:7px; align-items:center; }
+  .extras button { flex:1; border:1px solid #cbd5e1; background:#edf2fa; color:#263b69; border-radius:9px; padding:9px 6px; font-size:12px; font-weight:700; cursor:pointer; }
+  .extras button.acesa { background:#fff1c2; border-color:#e8b63e; }
   .acoes { display:flex; gap:8px; margin-top:8px; }
   .acoes button { flex:1; min-width:0; border:0; border-radius:9px; padding:11px 7px; background:#263b69; color:white; font-size:13px; font-weight:700; cursor:pointer; }
   .acoes button:last-child { background:#52627c; }
@@ -66,6 +69,10 @@
     <div id="reader"></div>
     <div id="resultado" role="status" aria-live="polite"></div>
   </section>
+  <div class="extras">
+    <button id="btnLanterna" onclick="alternarLanterna()" disabled>🔦 LANTERNA</button>
+    <button id="btnSom" onclick="alternarSom()">🔊 SOM LIGADO</button>
+  </div>
   <div class="acoes">
     <button id="btnIniciar" onclick="iniciarCamera()" disabled>INICIAR CÂMERA</button>
     <button id="btnParar" onclick="pararCamera()" disabled>PARAR CÂMERA</button>
@@ -91,6 +98,90 @@ const CLIENT_ID =
     let ultimoMomento = 0;
     let temporizador = null;
     let geracaoCamera = 0;
+    let audioContexto = null;
+    let somAtivo = true;
+    let lanternaAtiva = false;
+    let trilhaCamera = null;
+
+    function prepararAudio() {
+      try {
+        const AudioCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtor) return;
+        if (!audioContexto) audioContexto = new AudioCtor();
+        if (audioContexto.state === "suspended") audioContexto.resume().catch(() => {});
+      } catch (e) { console.warn("Áudio indisponível", e); }
+    }
+
+    function emitirTom(frequencia, duracao, atraso = 0, volume = 0.12) {
+      if (!somAtivo || !audioContexto || audioContexto.state !== "running") return;
+      const inicio = audioContexto.currentTime + atraso;
+      const oscilador = audioContexto.createOscillator();
+      const ganho = audioContexto.createGain();
+      oscilador.type = "sine";
+      oscilador.frequency.value = frequencia;
+      ganho.gain.setValueAtTime(0.0001, inicio);
+      ganho.gain.exponentialRampToValueAtTime(volume, inicio + 0.015);
+      ganho.gain.exponentialRampToValueAtTime(0.0001, inicio + duracao);
+      oscilador.connect(ganho);
+      ganho.connect(audioContexto.destination);
+      oscilador.start(inicio);
+      oscilador.stop(inicio + duracao + 0.02);
+    }
+
+    function tocarResultado(status) {
+      try {
+        if (status === "LIBERADO") emitirTom(880, 0.13);
+        if (status === "DUPLICADO") {
+          emitirTom(390, 0.16);
+          emitirTom(330, 0.20, 0.22);
+        }
+      } catch (e) { console.warn("Não foi possível tocar o aviso", e); }
+    }
+
+    function alternarSom() {
+      prepararAudio();
+      somAtivo = !somAtivo;
+      el("btnSom").textContent = somAtivo ? "🔊 SOM LIGADO" : "🔇 SOM DESLIGADO";
+      if (somAtivo) emitirTom(880, 0.10);
+    }
+
+    function obterTrilhaCamera() {
+      const video = el("reader").querySelector("video");
+      return video?.srcObject?.getVideoTracks?.()[0] || null;
+    }
+
+    function atualizarBotaoLanterna(disponivel) {
+      const botao = el("btnLanterna");
+      botao.disabled = !disponivel;
+      botao.classList.toggle("acesa", lanternaAtiva);
+      botao.textContent = lanternaAtiva ? "🔦 DESLIGAR LANTERNA" : "🔦 LIGAR LANTERNA";
+      botao.title = disponivel ? "Controlar o flash da câmera" : "Lanterna não disponível nesta câmera/navegador";
+    }
+
+    async function alternarLanterna() {
+      const trilha = obterTrilhaCamera();
+      if (!cameraAtiva || !trilha) return;
+      try {
+        const proximo = !lanternaAtiva;
+        await trilha.applyConstraints({ advanced: [{ torch: proximo }] });
+        lanternaAtiva = proximo;
+        atualizarBotaoLanterna(true);
+      } catch (erro) {
+        console.warn("Lanterna indisponível", erro);
+        el("status").textContent = "Não foi possível controlar a lanterna neste navegador.";
+        lanternaAtiva = false;
+        atualizarBotaoLanterna(false);
+      }
+    }
+
+    function verificarLanterna() {
+      const trilha = obterTrilhaCamera();
+      trilhaCamera = trilha;
+      let disponivel = false;
+      try { disponivel = trilha?.getCapabilities?.().torch === true; } catch (e) {}
+      lanternaAtiva = false;
+      atualizarBotaoLanterna(disponivel);
+    }
 
     const el = id => document.getElementById(id);
 
@@ -240,6 +331,7 @@ const CLIENT_ID =
         }
 
         atualizarTotais(dados.totais);
+        tocarResultado(dados.status);
 
         el("status").textContent =
           "Conferência concluída. Próxima etiqueta automaticamente.";
@@ -288,6 +380,7 @@ const CLIENT_ID =
         !tokenGoogle
       ) return;
 
+      prepararAudio(); // Acionado pelo toque em INICIAR CÂMERA
       iniciando = true;
       el("btnIniciar").disabled = true;
 
@@ -337,6 +430,7 @@ const CLIENT_ID =
         ultimoCodigo = "";
         ultimoMomento = 0;
 
+        verificarLanterna();
         el("btnParar").disabled = false;
         el("status").textContent =
           "Câmera ativa. Aponte para o QR Code.";
@@ -360,6 +454,9 @@ const CLIENT_ID =
     async function pararCamera() {
       cameraAtiva = false;
       geracaoCamera++;
+      lanternaAtiva = false;
+      trilhaCamera = null;
+      atualizarBotaoLanterna(false);
 
       if (temporizador) {
         clearTimeout(temporizador);
