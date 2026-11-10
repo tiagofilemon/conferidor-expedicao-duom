@@ -133,6 +133,8 @@ const CLIENT_ID =
     let atualizandoCaixas = false;
     let confirmandoTroca = false;
     let ultimoAvisoCaixa = "";
+    let versaoCaixas = 0;
+    let consultaPendente = false;
 
     function prepararAudio() {
       try {
@@ -284,11 +286,15 @@ const CLIENT_ID =
     }
 
     async function consultarCaixas() {
-      if (!tokenGoogle || atualizandoCaixas || confirmandoTroca) return;
+      if (!tokenGoogle || confirmandoTroca) return;
+      if (atualizandoCaixas) { consultaPendente = true; return; }
       atualizandoCaixas = true;
+      const versaoInicio = versaoCaixas;
       try {
         const dados = await chamarAPI({ acao: "consultar_caixas" });
         if (!Array.isArray(dados.caixas)) throw new Error("Consulta de caixas inválida.");
+        // Descarta consultas iniciadas antes de uma bipagem confirmada.
+        if (versaoInicio !== versaoCaixas) { consultaPendente = true; return; }
         caixasAtuais = { AGENCIA: null, FLEX: null };
         for (const caixa of dados.caixas) {
           if (caixa.tipo_envio === "AGENCIA" || caixa.tipo_envio === "FLEX") {
@@ -300,6 +306,39 @@ const CLIENT_ID =
         el("status").textContent = "Não foi possível atualizar as caixas: " + mensagemErro(erro);
       } finally {
         atualizandoCaixas = false;
+        if (consultaPendente) {
+          consultaPendente = false;
+          consultarCaixas();
+        }
+      }
+    }
+
+    function atualizarCaixaDaBipagem(dados) {
+      const tipo = dados.tipoEnvio;
+      if (tipo !== "AGENCIA" && tipo !== "FLEX") return;
+      const numero = Number(dados.caixa);
+      if (!Number.isInteger(numero) || numero < 1) return;
+      const anterior = caixasAtuais[tipo];
+      if (dados.status === "LIBERADO") {
+        const posicao = Number(dados.posicao);
+        if (!Number.isInteger(posicao) || posicao < 1 || posicao > 50) return;
+        versaoCaixas++;
+        caixasAtuais[tipo] = {
+          tipo_envio: tipo, numero_caixa: numero, quantidade: posicao,
+          status: dados.trocaObrigatoria || posicao === 50 ? "AGUARDANDO_TROCA" : "ABERTA"
+        };
+        renderizarCaixas();
+        if (posicao === 50) avisarCaixaCheia(tipo, numero);
+        consultarCaixas();
+      } else if (dados.status === "TROCA_PENDENTE") {
+        versaoCaixas++;
+        caixasAtuais[tipo] = {
+          tipo_envio: tipo, numero_caixa: numero, quantidade: 50,
+          status: "AGUARDANDO_TROCA"
+        };
+        renderizarCaixas();
+        avisarCaixaCheia(tipo, numero);
+        consultarCaixas();
       }
     }
 
@@ -314,6 +353,9 @@ const CLIENT_ID =
       try {
         const dados = await chamarAPI({ acao: "confirmar_troca", tipoEnvio: tipo });
         if (!dados.sucesso) throw new Error(dados.erro || "Troca não confirmada.");
+        versaoCaixas++;
+        caixasAtuais[tipo] = { tipo_envio: tipo, numero_caixa: Number(dados.novaCaixa), quantidade: 0, status: "ABERTA" };
+        renderizarCaixas();
         mostrarResultado("sucesso", "TROCA CONFIRMADA", nome + " — Caixa " + nomeCaixa(dados.novaCaixa) + " aberta.");
         el("status").textContent = "Troca registrada. Continue a conferência.";
       } catch (erro) {
