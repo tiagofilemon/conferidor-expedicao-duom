@@ -22,6 +22,20 @@
   .btn-sair { width:auto; flex:none; border:0; padding:8px 12px; margin:0; font-size:12px; border-radius:8px; color:#344054; background:#e9edf3; font-weight:700; cursor:pointer; }
   .painel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; }
   .contador { background:white; border-radius:10px; text-align:center; padding:7px 5px 6px; min-width:0; }
+  .contador-acao { width:100%; border:0; font:inherit; color:inherit; cursor:pointer; }
+  .contador-acao:focus-visible { outline:3px solid #27528b; outline-offset:2px; }
+  .contador-acao .rotulo::after { content:"  ↗"; color:#c62828; }
+  .modal-fundo { position:fixed; inset:0; z-index:1000; background:rgba(18,29,49,.65); display:flex; align-items:center; justify-content:center; padding:15px; }
+  .modal-janela { width:100%; max-width:520px; max-height:85dvh; overflow:hidden; background:white; border-radius:14px; display:flex; flex-direction:column; box-shadow:0 12px 40px #0003; }
+  .modal-topo { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px; border-bottom:1px solid #e5eaf2; }
+  .modal-topo h2 { font-size:18px; margin:0; }
+  .modal-fechar { border:0; border-radius:8px; background:#e9edf3; color:#263b69; padding:9px 12px; font-size:13px; font-weight:700; cursor:pointer; }
+  .modal-lista { overflow-y:auto; padding:12px 15px 18px; }
+  .item-duplicidade { padding:12px 0; border-bottom:1px solid #e5eaf2; overflow-wrap:anywhere; }
+  .item-duplicidade:last-child { border-bottom:0; }
+  .item-duplicidade strong { display:block; font-size:14px; margin-bottom:5px; }
+  .item-duplicidade div { font-size:12px; line-height:1.6; }
+  .modal-vazio { text-align:center; color:#667085; font-size:13px; padding:22px 8px; }
   .contador .rotulo { font-size:11px; color:#667085; font-weight:700; }
   .numero { font-size:27px; line-height:1.1; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; }
   .verde { color:#16803c; } .vermelho { color:#c62828; } .azul { color:#27528b; } .roxo { color:#7546a2; }
@@ -71,7 +85,7 @@
   </section>
   <section class="painel" aria-label="Indicadores de hoje">
     <div class="contador"><div class="rotulo">Liberados hoje</div><div id="liberados" class="numero verde">0</div></div>
-    <div class="contador"><div class="rotulo">Duplicidades hoje</div><div id="duplicados" class="numero vermelho">0</div></div>
+    <button id="btnDuplicidades" class="contador contador-acao" type="button" onclick="abrirDuplicidades()" disabled aria-label="Consultar histórico de duplicidades de hoje"><div class="rotulo">Duplicidades hoje</div><div id="duplicados" class="numero vermelho">0</div></button>
     <div class="contador"><div class="rotulo">Agência</div><div id="agencia" class="numero azul">0</div></div>
     <div class="contador"><div class="rotulo">Flex</div><div id="flex" class="numero roxo">0</div></div>
   </section>
@@ -106,6 +120,15 @@
   </div>
   <div id="status">Aguardando login Google.</div>
 </main>
+<div id="modalDuplicidades" class="modal-fundo oculto" role="dialog" aria-modal="true" aria-labelledby="tituloDuplicidades" onclick="if(event.target===this) fecharDuplicidades()">
+  <div class="modal-janela">
+    <div class="modal-topo">
+      <h2 id="tituloDuplicidades">Duplicidades de hoje</h2>
+      <button class="modal-fechar" type="button" onclick="fecharDuplicidades()">FECHAR ✕</button>
+    </div>
+    <div id="listaDuplicidades" class="modal-lista" aria-live="polite"></div>
+  </div>
+</div>
 <script>
 const CLIENT_ID =
       "772405314986-gn3tjfsqs1a7e1ua5539nqnes2to5m0o.apps.googleusercontent.com";
@@ -135,6 +158,9 @@ const CLIENT_ID =
     let ultimoAvisoCaixa = "";
     let versaoCaixas = 0;
     let consultaPendente = false;
+    let modalDuplicidadesAberto = false;
+    let consultaDuplicidadesId = 0;
+    let cameraPausadaPeloHistorico = false;
 
     function prepararAudio() {
       try {
@@ -250,6 +276,96 @@ const CLIENT_ID =
       el("agencia").textContent = totais.agenciaHoje ?? 0;
       el("flex").textContent = totais.flexHoje ?? 0;
     }
+
+    function formatarDataHoraSP(valor) {
+      if (!valor) return "Horário indisponível";
+      const data = new Date(valor);
+      if (Number.isNaN(data.getTime())) return "Horário indisponível";
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit",
+        year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
+      }).format(data);
+    }
+
+    function formatarDataCaixa(valor) {
+      if (!valor) return "Data da caixa indisponível";
+      const partes = String(valor).split("-");
+      return partes.length === 3 ? partes.reverse().join("/") : String(valor);
+    }
+
+    function renderizarDuplicidades(registros) {
+      const lista = el("listaDuplicidades");
+      lista.replaceChildren();
+      if (!registros.length) {
+        const vazio = document.createElement("div");
+        vazio.className = "modal-vazio";
+        vazio.textContent = "Nenhuma duplicidade registrada hoje.";
+        lista.append(vazio);
+        return;
+      }
+      for (const registro of registros) {
+        const item = document.createElement("article");
+        item.className = "item-duplicidade";
+        const titulo = document.createElement("strong");
+        titulo.textContent = "Envio " + (registro.id_envio ?? "não informado");
+        const tentativa = document.createElement("div");
+        tentativa.textContent = "Tentativa: " + formatarDataHoraSP(registro.data_hora);
+        const modalidade = document.createElement("div");
+        modalidade.textContent = "Modalidade: " + (registro.tipo_envio === "AGENCIA" ? "Agência" : registro.tipo_envio === "FLEX" ? "Flex" : "Não informada");
+        const local = document.createElement("div");
+        local.textContent = registro.numero_caixa != null && registro.posicao_caixa != null
+          ? "Conferência original: Caixa " + nomeCaixa(registro.numero_caixa) +
+            " · Posição " + registro.posicao_caixa + "/50 · " + formatarDataCaixa(registro.data_caixa)
+          : "Localização original não registrada.";
+        item.append(titulo, tentativa, modalidade, local);
+        lista.append(item);
+      }
+    }
+
+    async function abrirDuplicidades() {
+      if (!tokenGoogle || modalDuplicidadesAberto) return;
+      modalDuplicidadesAberto = true;
+      cameraPausadaPeloHistorico = false;
+      if (cameraAtiva && leitor && !processando) {
+        try { leitor.pause(true); cameraPausadaPeloHistorico = true; } catch (e) {}
+      }
+      el("modalDuplicidades").classList.remove("oculto");
+      el("listaDuplicidades").replaceChildren();
+      const carregando = document.createElement("div");
+      carregando.className = "modal-vazio";
+      carregando.textContent = "Carregando histórico...";
+      el("listaDuplicidades").append(carregando);
+      el("modalDuplicidades").querySelector(".modal-fechar").focus();
+      const idConsulta = ++consultaDuplicidadesId;
+      try {
+        const dados = await chamarAPI({ acao: "consultar_duplicidades" });
+        if (!modalDuplicidadesAberto || idConsulta !== consultaDuplicidadesId) return;
+        if (!Array.isArray(dados.duplicidades)) throw new Error("Resposta inválida do servidor.");
+        renderizarDuplicidades(dados.duplicidades);
+      } catch (erro) {
+        if (!modalDuplicidadesAberto || idConsulta !== consultaDuplicidadesId) return;
+        const aviso = document.createElement("div");
+        aviso.className = "modal-vazio";
+        aviso.textContent = "Não foi possível consultar o histórico: " + mensagemErro(erro);
+        el("listaDuplicidades").replaceChildren(aviso);
+      }
+    }
+
+    function fecharDuplicidades() {
+      if (!modalDuplicidadesAberto) return;
+      modalDuplicidadesAberto = false;
+      consultaDuplicidadesId++;
+      el("modalDuplicidades").classList.add("oculto");
+      if (cameraPausadaPeloHistorico && cameraAtiva && leitor && !processando) {
+        try { leitor.resume(); } catch (e) { console.warn("Não foi possível retomar a câmera", e); }
+      }
+      cameraPausadaPeloHistorico = false;
+      el("btnDuplicidades").focus();
+    }
+
+    document.addEventListener("keydown", evento => {
+      if (evento.key === "Escape" && modalDuplicidadesAberto) fecharDuplicidades();
+    });
 
     async function chamarAPI(corpo) {
       const resposta = await fetch(API_URL, {
@@ -397,6 +513,7 @@ const CLIENT_ID =
       el("acesso").classList.add("conectado");
 
       el("btnIniciar").disabled = false;
+      el("btnDuplicidades").disabled = false;
       el("btnSair").classList.remove("oculto");
 
       el("status").textContent =
@@ -432,6 +549,7 @@ const CLIENT_ID =
       if (
         !tokenGoogle ||
         !cameraAtiva ||
+        modalDuplicidadesAberto ||
         processando
       ) return;
 
@@ -532,7 +650,7 @@ atualizarTotais(dados.totais);
           temporizador = setTimeout(() => {
             temporizador = null;
 
-            if (!cameraAtiva || !leitor) return;
+            if (!cameraAtiva || !leitor || modalDuplicidadesAberto) return;
 
             try {
               leitor.resume();
@@ -655,6 +773,8 @@ atualizarTotais(dados.totais);
 
     async function sair() {
       if (processando) return;
+      fecharDuplicidades();
+      el("btnDuplicidades").disabled = true;
 
       await pararCamera();
 
