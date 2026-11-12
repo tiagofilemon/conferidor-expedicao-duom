@@ -24,7 +24,12 @@
   .acesso:not(.conectado) .acesso-titulo { font-size:15px; }
   .acesso.conectado { min-height:42px; padding:6px 10px; }
   .btn-sair { width:auto; flex:none; border:0; padding:8px 12px; margin:0; font-size:12px; border-radius:8px; color:#344054; background:#e9edf3; font-weight:700; cursor:pointer; }
-  .painel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; }
+  .painel { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-bottom:7px; }
+  .painel > .contador { grid-column:span 2; }
+  .painel > .contador:nth-child(-n+2) { grid-column:span 3; }
+  .painel > .contador:nth-child(n+3) { padding:5px 3px 4px; }
+  .painel > .contador:nth-child(n+3) .rotulo { font-size:10px; }
+  .painel > .contador:nth-child(n+3) .numero { font-size:21px; margin-top:1px; }
   .contador { background:white; border-radius:10px; text-align:center; padding:7px 5px 6px; min-width:0; }
   .contador-acao { width:100%; border:0; font:inherit; color:inherit; cursor:pointer; }
   .contador-acao:focus-visible { outline:3px solid #27528b; outline-offset:2px; }
@@ -43,20 +48,20 @@
   .contador .rotulo { font-size:11px; color:#667085; font-weight:700; }
   .numero { font-size:27px; line-height:1.1; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; }
   .verde { color:#16803c; } .vermelho { color:#c62828; } .azul { color:#27528b; } .roxo { color:#7546a2; }
-  .caixas { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; }
-  .caixa-card { background:white; border-radius:10px; padding:9px; min-width:0; }
-  .caixa-topo { display:flex; justify-content:space-between; gap:5px; font-size:12px; font-weight:700; }
-  .caixa-contagem { font-size:13px; font-weight:800; margin-top:5px; }
-  .caixa-trilho { height:7px; background:#e9edf3; border-radius:9px; overflow:hidden; margin-top:6px; }
+  .caixas { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-bottom:7px; }
+  .caixa-card { background:white; border-radius:10px; padding:6px; min-width:0; }
+  .caixa-topo { display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 4px; font-size:10px; font-weight:700; }
+  .caixa-contagem { font-size:12px; font-weight:800; margin-top:3px; }
+  .caixa-trilho { height:6px; background:#e9edf3; border-radius:9px; overflow:hidden; margin-top:4px; }
   .caixa-progresso { height:100%; width:0; background:#27528b; transition:width .2s; }
   #barraFlex { background:#7546a2; }
   #barraShopee { background:#e67e22; }
   #barraAmazon { background:#16803c; }
   #barraTiktok { background:#30343b; }
   #barraMagalu { background:#0089d6; }
-  .caixa-situacao { font-size:10px; color:#667085; margin-top:5px; }
+  .caixa-situacao { font-size:9px; color:#667085; margin-top:4px; overflow-wrap:anywhere; }
   .caixa-card.pendente { outline:2px solid #e5a32a; background:#fff6dc; }
-  .btn-troca { display:none; width:100%; border:0; background:#a55b00; color:white; padding:9px 5px; border-radius:8px; margin-top:7px; font-weight:800; font-size:11px; cursor:pointer; }
+  .btn-troca { display:none; width:100%; border:0; background:#a55b00; color:white; padding:8px 3px; border-radius:8px; margin-top:6px; font-weight:800; font-size:10px; cursor:pointer; overflow-wrap:anywhere; }
   .caixa-card.pendente .btn-troca { display:block; }
   .camera-cartao { background:white; border-radius:11px; padding:8px; }
   .camera-titulo { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 6px; font-size:12px; font-weight:700; }
@@ -77,7 +82,7 @@
   .acoes button:last-child { background:#52627c; }
   button:disabled { opacity:.45; cursor:default; }
   #status { color:#667085; text-align:center; font-size:11px; margin:7px 0 0; overflow-wrap:anywhere; }
-  @media (max-height:760px) { #reader, #reader video, #reader img { max-height:min(32dvh,250px) !important; } .numero { font-size:24px; } .contador { padding:5px; } }
+  @media (max-height:760px) { #reader, #reader video, #reader img { max-height:min(32dvh,250px) !important; } .painel > .contador:nth-child(-n+2) .numero { font-size:24px; } .contador { padding:5px; } }
   @media (min-width:700px) { body { padding:16px; } #reader, #reader video, #reader img { max-height:350px !important; } }
 </style>
 </head>
