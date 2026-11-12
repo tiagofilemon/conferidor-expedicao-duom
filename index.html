@@ -168,6 +168,9 @@ const API_URL =
     let modalDuplicidadesAberto = false;
     let consultaDuplicidadesId = 0;
     let cameraPausadaPeloHistorico = false;
+    let versaoTotais = 0;
+    let atualizandoTotais = false;
+    let consultaTotaisPendente = false;
 
     function prepararAudio() {
       try {
@@ -282,6 +285,34 @@ const API_URL =
         totais.duplicadosHoje ?? 0;
       el("agencia").textContent = totais.agenciaHoje ?? 0;
       el("flex").textContent = totais.flexHoje ?? 0;
+    }
+
+    async function consultarTotais() {
+      if (!tokenAcesso) return;
+      if (processando) { consultaTotaisPendente = true; return; }
+      if (atualizandoTotais) { consultaTotaisPendente = true; return; }
+      atualizandoTotais = true;
+      const versaoInicio = versaoTotais;
+      const tokenInicio = tokenAcesso;
+      try {
+        const dados = await chamarAPI({ acao: "consultar_totais" });
+        if (tokenInicio !== tokenAcesso || versaoInicio !== versaoTotais || processando) return;
+        if (!dados.sucesso || !dados.totais || typeof dados.totais !== "object") {
+          throw new Error("Consulta de totais inválida.");
+        }
+        atualizarTotais(dados.totais);
+      } catch (erro) {
+        console.warn("Não foi possível atualizar os totais:", mensagemErro(erro));
+        if (tokenInicio === tokenAcesso) {
+          el("status").textContent = "Não foi possível carregar os totais: " + mensagemErro(erro);
+        }
+      } finally {
+        atualizandoTotais = false;
+        if (consultaTotaisPendente && tokenAcesso) {
+          consultaTotaisPendente = false;
+          consultarTotais();
+        }
+      }
     }
 
     function formatarDataHoraSP(valor) {
@@ -552,6 +583,7 @@ const API_URL =
         el("btnSair").classList.remove("oculto");
         el("status").textContent = "Acesso liberado. Consultando caixas...";
         consultarCaixas();
+        consultarTotais();
       } catch (erro) {
         el("erroLogin").textContent = mensagemErro(erro);
         el("erroLogin").classList.remove("oculto");
@@ -623,7 +655,8 @@ const tipoLegivel = dados.tipoEnvio === "FLEX"
            throw new Error("Resposta inesperada do servidor.");
          }
 
-atualizarTotais(dados.totais);
+        versaoTotais++;
+        atualizarTotais(dados.totais);
         // Atualiza imediatamente a caixa com a posicao confirmada pelo servidor.
         if (dados.status === "LIBERADO" || dados.status === "TROCA_PENDENTE") {
           atualizarCaixaDaBipagem(dados);
@@ -656,6 +689,10 @@ atualizarTotais(dados.totais);
 
       } finally {
         processando = false;
+        if (consultaTotaisPendente && tokenAcesso) {
+          consultaTotaisPendente = false;
+          consultarTotais();
+        }
         if (!tokenAcesso) {
           await encerrarSessao("Sessão expirada. Informe a senha novamente.");
           return;
@@ -805,6 +842,9 @@ atualizarTotais(dados.totais);
       tokenAcesso = null;
       sessaoExpiraEm = 0;
       caixasAtuais = { AGENCIA: null, FLEX: null };
+      versaoTotais++;
+      consultaTotaisPendente = false;
+      atualizarTotais({ liberadosHoje: 0, duplicadosHoje: 0, agenciaHoje: 0, flexHoje: 0 });
       renderizarCaixas();
       el("usuario").textContent = "Informe a senha de acesso à expedição.";
       el("formLogin").classList.remove("oculto");
@@ -823,13 +863,13 @@ atualizarTotais(dados.totais);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && tokenAcesso) {
         if (Date.now() >= sessaoExpiraEm) encerrarSessao("Sessão expirada. Informe a senha novamente.");
-        else consultarCaixas();
+        else { consultarCaixas(); consultarTotais(); }
       }
     });
     setInterval(() => {
       if (!tokenAcesso || processando) return;
       if (Date.now() >= sessaoExpiraEm) encerrarSessao("Sessão expirada. Informe a senha novamente.");
-      else consultarCaixas();
+      else { consultarCaixas(); consultarTotais(); }
     }, 60000);
   </script>
 </body>
