@@ -50,6 +50,10 @@
   .caixa-trilho { height:7px; background:#e9edf3; border-radius:9px; overflow:hidden; margin-top:6px; }
   .caixa-progresso { height:100%; width:0; background:#27528b; transition:width .2s; }
   #barraFlex { background:#7546a2; }
+  #barraShopee { background:#e67e22; }
+  #barraAmazon { background:#16803c; }
+  #barraTiktok { background:#30343b; }
+  #barraMagalu { background:#0089d6; }
   .caixa-situacao { font-size:10px; color:#667085; margin-top:5px; }
   .caixa-card.pendente { outline:2px solid #e5a32a; background:#fff6dc; }
   .btn-troca { display:none; width:100%; border:0; background:#a55b00; color:white; padding:9px 5px; border-radius:8px; margin-top:7px; font-weight:800; font-size:11px; cursor:pointer; }
@@ -96,6 +100,10 @@
     <button id="btnDuplicidades" class="contador contador-acao" type="button" onclick="abrirDuplicidades()" disabled aria-label="Consultar histórico de duplicidades de hoje"><div class="rotulo">Duplicidades hoje</div><div id="duplicados" class="numero vermelho">0</div></button>
     <div class="contador"><div class="rotulo">Agência</div><div id="agencia" class="numero azul">0</div></div>
     <div class="contador"><div class="rotulo">Flex</div><div id="flex" class="numero roxo">0</div></div>
+    <div class="contador"><div class="rotulo">Shopee</div><div id="shopee" class="numero">0</div></div>
+    <div class="contador"><div class="rotulo">Amazon</div><div id="amazon" class="numero">0</div></div>
+    <div class="contador"><div class="rotulo">TikTok</div><div id="tiktok" class="numero">0</div></div>
+    <div class="contador"><div class="rotulo">Magalu</div><div id="magalu" class="numero">0</div></div>
   </section>
   <section class="caixas" aria-label="Caixas de expedição">
     <div id="cardAgencia" class="caixa-card">
@@ -111,6 +119,34 @@
       <div class="caixa-trilho"><div id="barraFlex" class="caixa-progresso"></div></div>
       <div id="situacaoFlex" class="caixa-situacao">Aguardando consulta</div>
       <button id="trocarFlex" class="btn-troca" onclick="confirmarTroca('FLEX')">CONFIRMAR TROCA DE CAIXA</button>
+    </div>
+    <div id="cardShopee" class="caixa-card">
+      <div class="caixa-topo"><span>📦 Shopee</span><span id="caixaShopee">Caixa 01</span></div>
+      <div id="qtdShopee" class="caixa-contagem">— / 50</div>
+      <div class="caixa-trilho"><div id="barraShopee" class="caixa-progresso"></div></div>
+      <div id="situacaoShopee" class="caixa-situacao">Aguardando consulta</div>
+      <button id="trocarShopee" class="btn-troca" onclick="confirmarTroca('SHOPEE')">CONFIRMAR TROCA DE CAIXA</button>
+    </div>
+    <div id="cardAmazon" class="caixa-card">
+      <div class="caixa-topo"><span>📦 Amazon</span><span id="caixaAmazon">Caixa 01</span></div>
+      <div id="qtdAmazon" class="caixa-contagem">— / 50</div>
+      <div class="caixa-trilho"><div id="barraAmazon" class="caixa-progresso"></div></div>
+      <div id="situacaoAmazon" class="caixa-situacao">Aguardando consulta</div>
+      <button id="trocarAmazon" class="btn-troca" onclick="confirmarTroca('AMAZON')">CONFIRMAR TROCA DE CAIXA</button>
+    </div>
+    <div id="cardTiktok" class="caixa-card">
+      <div class="caixa-topo"><span>📦 TikTok</span><span id="caixaTiktok">Caixa 01</span></div>
+      <div id="qtdTiktok" class="caixa-contagem">— / 50</div>
+      <div class="caixa-trilho"><div id="barraTiktok" class="caixa-progresso"></div></div>
+      <div id="situacaoTiktok" class="caixa-situacao">Aguardando consulta</div>
+      <button id="trocarTiktok" class="btn-troca" onclick="confirmarTroca('TIKTOK')">CONFIRMAR TROCA DE CAIXA</button>
+    </div>
+    <div id="cardMagalu" class="caixa-card">
+      <div class="caixa-topo"><span>📦 Magalu</span><span id="caixaMagalu">Caixa 01</span></div>
+      <div id="qtdMagalu" class="caixa-contagem">— / 50</div>
+      <div class="caixa-trilho"><div id="barraMagalu" class="caixa-progresso"></div></div>
+      <div id="situacaoMagalu" class="caixa-situacao">Aguardando consulta</div>
+      <button id="trocarMagalu" class="btn-troca" onclick="confirmarTroca('MAGALU')">CONFIRMAR TROCA DE CAIXA</button>
     </div>
   </section>
   <section class="camera-cartao" aria-label="Leitor de etiquetas">
@@ -159,7 +195,9 @@ const API_URL =
     let somAtivo = true;
     let lanternaAtiva = false;
     let trilhaCamera = null;
-    let caixasAtuais = { AGENCIA: null, FLEX: null };
+    const MODALIDADES = { AGENCIA: ["Agencia", "Agência"], FLEX: ["Flex", "Flex"], SHOPEE: ["Shopee", "Shopee"], AMAZON: ["Amazon", "Amazon"], TIKTOK: ["Tiktok", "TikTok"], MAGALU: ["Magalu", "Magalu"] };
+    const novasCaixasVazias = () => Object.fromEntries(Object.keys(MODALIDADES).map(tipo => [tipo, null]));
+    let caixasAtuais = novasCaixasVazias();
     let atualizandoCaixas = false;
     let confirmandoTroca = false;
     let ultimoAvisoCaixa = "";
@@ -285,6 +323,10 @@ const API_URL =
         totais.duplicadosHoje ?? 0;
       el("agencia").textContent = totais.agenciaHoje ?? 0;
       el("flex").textContent = totais.flexHoje ?? 0;
+      el("shopee").textContent = totais.shopeeHoje ?? 0;
+      el("amazon").textContent = totais.amazonHoje ?? 0;
+      el("tiktok").textContent = totais.tiktokHoje ?? 0;
+      el("magalu").textContent = totais.magaluHoje ?? 0;
     }
 
     async function consultarTotais() {
@@ -349,7 +391,7 @@ const API_URL =
         const tentativa = document.createElement("div");
         tentativa.textContent = "Tentativa: " + formatarDataHoraSP(registro.data_hora);
         const modalidade = document.createElement("div");
-        modalidade.textContent = "Modalidade: " + (registro.tipo_envio === "AGENCIA" ? "Agência" : registro.tipo_envio === "FLEX" ? "Flex" : "Não informada");
+        modalidade.textContent = "Modalidade: " + (MODALIDADES[registro.tipo_envio]?.[1] || "Não informada");
         const local = document.createElement("div");
         local.textContent = registro.numero_caixa != null && registro.posicao_caixa != null
           ? "Conferência original: Caixa " + nomeCaixa(registro.numero_caixa) +
@@ -432,7 +474,7 @@ const API_URL =
     }
 
     function renderizarCaixas() {
-      for (const [tipo, sufixo] of [["AGENCIA", "Agencia"], ["FLEX", "Flex"]]) {
+      for (const [tipo, [sufixo]] of Object.entries(MODALIDADES)) {
         const caixa = caixasAtuais[tipo];
         const qtd = Number(caixa?.quantidade || 0);
         const pendente = caixa?.status === "AGUARDANDO_TROCA";
@@ -452,14 +494,16 @@ const API_URL =
       if (atualizandoCaixas) { consultaPendente = true; return; }
       atualizandoCaixas = true;
       const versaoInicio = versaoCaixas;
+      const tokenInicio = tokenAcesso;
       try {
         const dados = await chamarAPI({ acao: "consultar_caixas" });
         if (!Array.isArray(dados.caixas)) throw new Error("Consulta de caixas inválida.");
         // Descarta consultas iniciadas antes de uma bipagem confirmada.
+        if (tokenInicio !== tokenAcesso) return;
         if (versaoInicio !== versaoCaixas) { consultaPendente = true; return; }
-        caixasAtuais = { AGENCIA: null, FLEX: null };
+        caixasAtuais = novasCaixasVazias();
         for (const caixa of dados.caixas) {
-          if (caixa.tipo_envio === "AGENCIA" || caixa.tipo_envio === "FLEX") {
+          if (Object.hasOwn(MODALIDADES, caixa.tipo_envio)) {
             caixasAtuais[caixa.tipo_envio] = caixa;
           }
         }
@@ -477,7 +521,7 @@ const API_URL =
 
     function atualizarCaixaDaBipagem(dados) {
       const tipo = dados.tipoEnvio;
-      if (tipo !== "AGENCIA" && tipo !== "FLEX") return;
+      if (!Object.hasOwn(MODALIDADES, tipo)) return;
       const numero = Number(dados.caixa);
       if (!Number.isInteger(numero) || numero < 1) return;
       const anterior = caixasAtuais[tipo];
@@ -508,7 +552,7 @@ const API_URL =
       if (!tokenAcesso || confirmandoTroca || processando) return;
       const caixa = caixasAtuais[tipo];
       if (!caixa || caixa.status !== "AGUARDANDO_TROCA") return;
-      const nome = tipo === "AGENCIA" ? "Agência" : "Flex";
+      const nome = MODALIDADES[tipo]?.[1] || tipo;
       if (!window.confirm("Você já trocou fisicamente a caixa " + nome + " " + nomeCaixa(caixa.numero_caixa) + "?\n\nConfirme somente depois de separar a próxima caixa.")) return;
       confirmandoTroca = true;
       renderizarCaixas();
@@ -632,8 +676,7 @@ const API_URL =
       try {
                  const dados = await chamarAPI({ id: codigo });
 
-const tipoLegivel = dados.tipoEnvio === "FLEX"
-          ? "Flex" : dados.tipoEnvio === "AGENCIA" ? "Agência" : "";
+const tipoLegivel = MODALIDADES[dados.tipoEnvio]?.[1] || "";
         const sufixoTipo = tipoLegivel ? " · " + tipoLegivel : "";
 
                  if (dados.status === "LIBERADO") {
@@ -841,10 +884,11 @@ const tipoLegivel = dados.tipoEnvio === "FLEX"
       await pararCamera();
       tokenAcesso = null;
       sessaoExpiraEm = 0;
-      caixasAtuais = { AGENCIA: null, FLEX: null };
+      caixasAtuais = novasCaixasVazias();
       versaoTotais++;
+      versaoCaixas++;
       consultaTotaisPendente = false;
-      atualizarTotais({ liberadosHoje: 0, duplicadosHoje: 0, agenciaHoje: 0, flexHoje: 0 });
+      atualizarTotais({ liberadosHoje: 0, duplicadosHoje: 0, agenciaHoje: 0, flexHoje: 0, shopeeHoje: 0, amazonHoje: 0, tiktokHoje: 0, magaluHoje: 0 });
       renderizarCaixas();
       el("usuario").textContent = "Informe a senha de acesso à expedição.";
       el("formLogin").classList.remove("oculto");
