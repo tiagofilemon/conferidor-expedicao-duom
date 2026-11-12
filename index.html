@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f3f5f9">
 <title>Conferidor de Expedição - Grupo Duom</title>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -17,7 +16,12 @@
   .acesso-conteudo { flex:1; min-width:0; }
   .acesso-titulo { font-size:12px; font-weight:700; margin-bottom:2px; }
   #usuario { font-size:11px; color:#667085; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #googleButton { margin-top:7px; }
+  .login-form { display:flex; gap:7px; margin-top:7px; }
+  .login-form input { flex:1; min-width:0; padding:11px 9px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px; }
+  .login-form button { border:0; background:#263b69; color:#fff; padding:10px 16px; border-radius:8px; font-weight:700; cursor:pointer; }
+  .login-erro { color:#b71c1c; font-size:12px; margin-top:5px; }
+  .acesso:not(.conectado) { align-items:flex-start; }
+  .acesso:not(.conectado) .acesso-titulo { font-size:15px; }
   .acesso.conectado { min-height:42px; padding:6px 10px; }
   .btn-sair { width:auto; flex:none; border:0; padding:8px 12px; margin:0; font-size:12px; border-radius:8px; color:#344054; background:#e9edf3; font-weight:700; cursor:pointer; }
   .painel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-bottom:8px; }
@@ -78,8 +82,12 @@
   <section id="acesso" class="acesso" aria-label="Acesso do operador">
     <div class="acesso-conteudo">
       <div class="acesso-titulo">Operador</div>
-      <div id="usuario">Faça login com a conta autorizada.</div>
-      <div id="googleButton"></div>
+      <div id="usuario">Informe a senha de acesso à expedição.</div>
+      <form id="formLogin" class="login-form" onsubmit="entrarComSenha(event)">
+        <input id="senhaAcesso" type="password" placeholder="Senha de acesso" autocomplete="current-password" required maxlength="256" aria-label="Senha de acesso">
+        <button id="btnEntrar" type="submit">ENTRAR</button>
+      </form>
+      <div id="erroLogin" class="login-erro oculto" role="alert"></div>
     </div>
     <button id="btnSair" class="btn-sair oculto" onclick="sair()">Sair</button>
   </section>
@@ -118,7 +126,7 @@
     <button id="btnIniciar" onclick="iniciarCamera()" disabled>INICIAR CÂMERA</button>
     <button id="btnParar" onclick="pararCamera()" disabled>PARAR CÂMERA</button>
   </div>
-  <div id="status">Aguardando login Google.</div>
+  <div id="status">Aguardando senha de acesso.</div>
 </main>
 <div id="modalDuplicidades" class="modal-fundo oculto" role="dialog" aria-modal="true" aria-labelledby="tituloDuplicidades" onclick="if(event.target===this) fecharDuplicidades()">
   <div class="modal-janela">
@@ -130,16 +138,15 @@
   </div>
 </div>
 <script>
-const CLIENT_ID =
-      "772405314986-gn3tjfsqs1a7e1ua5539nqnes2to5m0o.apps.googleusercontent.com";
-
-    const API_URL =
+const API_URL =
       "https://qtheeurtuxtcliybatih.supabase.co/functions/v1/conferir-envio";
 
     const PAUSA_APOS_LEITURA = 800;
     const INTERVALO_MESMO_CODIGO = 4000;
 
-    let tokenGoogle = null;
+    let tokenAcesso = null;
+    let sessaoExpiraEm = 0;
+    let fazendoLogin = false;
     let leitor = null;
     let iniciando = false;
     let processando = false;
@@ -323,7 +330,7 @@ const CLIENT_ID =
     }
 
     async function abrirDuplicidades() {
-      if (!tokenGoogle || modalDuplicidadesAberto) return;
+      if (!tokenAcesso || modalDuplicidadesAberto) return;
       modalDuplicidadesAberto = true;
       cameraPausadaPeloHistorico = false;
       if (cameraAtiva && leitor && !processando) {
@@ -368,15 +375,23 @@ const CLIENT_ID =
     });
 
     async function chamarAPI(corpo) {
+      if (!tokenAcesso || Date.now() >= sessaoExpiraEm) {
+        await encerrarSessao("Sessão expirada. Informe a senha novamente.");
+        throw new Error("Sessão expirada. Entre novamente.");
+      }
       const resposta = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + tokenGoogle
+          "Authorization": "Bearer " + tokenAcesso
         },
         body: JSON.stringify(corpo)
       });
       const dados = await resposta.json();
+      if (resposta.status === 401) {
+        await encerrarSessao("Sessão inválida ou expirada. Informe a senha novamente.");
+        throw new Error("Sessão expirada. Entre novamente.");
+      }
       if (!resposta.ok) throw new Error(dados.erro || "Falha na comunicação com o servidor.");
       return dados;
     }
@@ -402,7 +417,7 @@ const CLIENT_ID =
     }
 
     async function consultarCaixas() {
-      if (!tokenGoogle || confirmandoTroca) return;
+      if (!tokenAcesso || confirmandoTroca) return;
       if (atualizandoCaixas) { consultaPendente = true; return; }
       atualizandoCaixas = true;
       const versaoInicio = versaoCaixas;
@@ -459,7 +474,7 @@ const CLIENT_ID =
     }
 
     async function confirmarTroca(tipo) {
-      if (!tokenGoogle || confirmandoTroca || processando) return;
+      if (!tokenAcesso || confirmandoTroca || processando) return;
       const caixa = caixasAtuais[tipo];
       if (!caixa || caixa.status !== "AGUARDANDO_TROCA") return;
       const nome = tipo === "AGENCIA" ? "Agência" : "Flex";
@@ -503,51 +518,53 @@ const CLIENT_ID =
       try { navigator.vibrate?.([300, 150, 300]); } catch (e) {}
     }
 
-    function loginGoogle(resposta) {
-      if (!resposta?.credential) return;
-
-      tokenGoogle = resposta.credential;
-
-      el("usuario").textContent = "Operador conectado";
-      el("googleButton").classList.add("oculto");
-      el("acesso").classList.add("conectado");
-
-      el("btnIniciar").disabled = false;
-      el("btnDuplicidades").disabled = false;
-      el("btnSair").classList.remove("oculto");
-
-      el("status").textContent =
-        "Login realizado. Consultando caixas...";
-      consultarCaixas();
-    }
-
-    function iniciarLogin() {
-      if (!window.google?.accounts?.id) {
-        el("status").textContent =
-          "Não foi possível carregar o login Google.";
-        return;
-      }
-
-      google.accounts.id.initialize({
-        client_id: CLIENT_ID,
-        callback: loginGoogle,
-        auto_select: false
-      });
-
-      google.accounts.id.renderButton(
-        el("googleButton"),
-        {
-          theme: "outline",
-          size: "large",
-          text: "signin_with",
-          width: 260
+    async function entrarComSenha(evento) {
+      evento.preventDefault();
+      if (fazendoLogin || tokenAcesso) return;
+      const senha = el("senhaAcesso").value;
+      if (!senha) return;
+      fazendoLogin = true;
+      el("btnEntrar").disabled = true;
+      el("erroLogin").classList.add("oculto");
+      el("status").textContent = "Validando acesso...";
+      try {
+        const resposta = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ acao: "login_senha", senha })
+        });
+        const dados = await resposta.json();
+        if (!resposta.ok || !dados.sucesso || !dados.token || !dados.expiraEm) {
+          throw new Error(dados.erro || "Não foi possível entrar.");
         }
-      );
+        const expiracao = Date.parse(dados.expiraEm);
+        if (!Number.isFinite(expiracao) || expiracao <= Date.now()) {
+          throw new Error("O servidor retornou uma sessão inválida.");
+        }
+        tokenAcesso = dados.token;
+        sessaoExpiraEm = expiracao;
+        el("senhaAcesso").value = "";
+        el("usuario").textContent = "OPERADOR_EXPEDICAO conectado";
+        el("formLogin").classList.add("oculto");
+        el("acesso").classList.add("conectado");
+        el("btnIniciar").disabled = false;
+        el("btnDuplicidades").disabled = false;
+        el("btnSair").classList.remove("oculto");
+        el("status").textContent = "Acesso liberado. Consultando caixas...";
+        consultarCaixas();
+      } catch (erro) {
+        el("erroLogin").textContent = mensagemErro(erro);
+        el("erroLogin").classList.remove("oculto");
+        el("status").textContent = "Acesso não autorizado.";
+      } finally {
+        fazendoLogin = false;
+        el("btnEntrar").disabled = false;
+      }
     }
 
     async function codigoLido(codigo) {
       if (
-        !tokenGoogle ||
+        !tokenAcesso ||
         !cameraAtiva ||
         modalDuplicidadesAberto ||
         processando
@@ -639,6 +656,10 @@ atualizarTotais(dados.totais);
 
       } finally {
         processando = false;
+        if (!tokenAcesso) {
+          await encerrarSessao("Sessão expirada. Informe a senha novamente.");
+          return;
+        }
 
         // Retoma automaticamente apenas se a
         // mesma câmera continuar ativa.
@@ -668,7 +689,7 @@ atualizarTotais(dados.totais);
       if (
         leitor ||
         iniciando ||
-        !tokenGoogle
+        !tokenAcesso
       ) return;
 
       prepararAudio(); // Acionado pelo toque em INICIAR CÂMERA
@@ -766,37 +787,50 @@ atualizarTotais(dados.totais);
         }
       }
 
-      el("btnIniciar").disabled = !tokenGoogle;
+      el("btnIniciar").disabled = !tokenAcesso;
       el("btnParar").disabled = true;
       el("status").textContent = "Câmera parada.";
     }
 
-    async function sair() {
-      if (processando) return;
+    async function encerrarSessao(mensagem = "Sessão encerrada.") {
+      if (processando) {
+        // Finaliza o bloqueio visual após a leitura em andamento.
+        tokenAcesso = null;
+        sessaoExpiraEm = 0;
+        return;
+      }
       fecharDuplicidades();
       el("btnDuplicidades").disabled = true;
-
       await pararCamera();
-
-      tokenGoogle = null;
+      tokenAcesso = null;
+      sessaoExpiraEm = 0;
       caixasAtuais = { AGENCIA: null, FLEX: null };
       renderizarCaixas();
-      google.accounts.id.disableAutoSelect();
-
-      el("usuario").textContent = "Faça login com a conta autorizada.";
-      el("googleButton").classList.remove("oculto");
+      el("usuario").textContent = "Informe a senha de acesso à expedição.";
+      el("formLogin").classList.remove("oculto");
+      el("erroLogin").classList.add("oculto");
       el("acesso").classList.remove("conectado");
-
       el("btnIniciar").disabled = true;
       el("btnSair").classList.add("oculto");
-      el("status").textContent = "Sessão encerrada.";
+      el("status").textContent = mensagem;
     }
 
-    window.addEventListener("load", iniciarLogin);
+    async function sair() {
+      if (processando) return;
+      await encerrarSessao();
+    }
+
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && tokenGoogle) consultarCaixas();
+      if (!document.hidden && tokenAcesso) {
+        if (Date.now() >= sessaoExpiraEm) encerrarSessao("Sessão expirada. Informe a senha novamente.");
+        else consultarCaixas();
+      }
     });
-    setInterval(() => { if (tokenGoogle && !processando) consultarCaixas(); }, 60000);
+    setInterval(() => {
+      if (!tokenAcesso || processando) return;
+      if (Date.now() >= sessaoExpiraEm) encerrarSessao("Sessão expirada. Informe a senha novamente.");
+      else consultarCaixas();
+    }, 60000);
   </script>
 </body>
 </html>
